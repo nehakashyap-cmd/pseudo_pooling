@@ -2,23 +2,32 @@ library(dada2); packageVersion("dada2")
 library(ggplot2)
 library(vegan)
 
-fnF <- list.files("/Users/jrabasc/Desktop/psuedo_pooling/full/StabilityNoMetaG", pattern="_R1", full.names = TRUE)
 
-#plotQualityProfile(fnF[c(3,13,33)])
+exp_run<- function(file_path) { # create a function with the name my_function
+  print("Hello World!")
+}
+
+fnF <- list.files("/Users/jrabasc/Desktop/PP_data/full/pilot_data", pattern="_R1", full.names = TRUE)
+
+plotQualityProfile(fnF[c(3,13,33)])
+
+exp_run<- function(file_path) { # create a function with the name my_function
+  print("Hello World!")
+}
+
 
 # Filter and truncate to 240 based on quality profile
-filtF <- file.path("/Users/jrabasc/Desktop/psuedo_pooling/full/StabilityNoMetaG/filtered", basename(fnF))
-track <- filterAndTrim(fnF, filtF, truncLen=240, maxEE=2, multithread=TRUE)
+filtF <- file.path("/Users/jrabasc/Desktop/psuedo_pooling/full/pilot_data/filtered", basename(fnF))
+track <- filterAndTrim(fnF, filtF, truncLen=100, maxEE=2, multithread=TRUE)
 # Learn error rates
 err <- learnErrors(filtF, multithread=TRUE, verbose=0)
-#plotErrors(err, nominalQ=TRUE) # sanity check
+plotErrors(err, nominalQ=TRUE) # sanity check
 
 # Sanity check looks normal, so go ahead and read in dereplicatd sequences
 drp <- derepFastq(filtF)
 # Parse sample names out of filenames, and add to drp
 sams <- sapply(strsplit(basename(fnF), "_"), `[`, 1)
 names(drp) <- sams
-
 
 system.time(dd <- dada(drp, err=err, multithread=TRUE, pool=FALSE, verbose=0)) # default
 ##     user   system  elapsed 
@@ -40,7 +49,8 @@ nsam <- length(filtF)
 df.obs <- data.frame(observed=c(rowSums(st>0), rowSums(st.pseudo>0), rowSums(st.pool>0)),
                      mode=rep(c("independent", "pseudo", "pooled"), each=nsam),
                      rank=rank(rowSums(st.pool>0)), times=3)
-keep <- !grepl("Mock", sams) & rowSums(st)>1000
+#keep <- !grepl("Mock", sams) & rowSums(st)>1000
+keep <- !grepl("H2O", sams) & rowSums(st)>1000 & !grepl("NC", sams) & !grepl("RB", sams)
 ggplot(data=df.obs, aes(x=rank, y=observed, color=mode)) + geom_point() +
   xlab("Samples") + ylab("Observed ASVs")
 
@@ -77,7 +87,8 @@ df <- data.frame(x = c(x.ind, x.pseudo, x.pool), y=c(y.ind, y.pseudo, y.pool),
                  mode=rep(c("independent", "pseudo", "pooled"), each=nsam), 
                  type="all", include="all", sample=c(sams, sams, sams),
                  stringsAsFactors=FALSE)
-plotdf <- df[!grepl("Mock", sams) & rowSums(st)>1000,] # Recyling the values 3x here
+#plotdf <- df[!grepl("Mock", sams) & rowSums(st)>1000,] # Recyling the values 3x here
+plotdf  <- df[!grepl("H2O", sams) & rowSums(st)>1000 & !grepl("NC", sams) & !grepl("RB", sams),]
 # Randomly pick 3 example samples to plot separately
 set.seed(100); NEX <- 3
 examples <- sample(unique(plotdf$sample), NEX)
