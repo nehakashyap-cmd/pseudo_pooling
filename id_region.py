@@ -5,6 +5,7 @@ import pandas as pd
 import subprocess
 from Bio import SeqIO
 from Bio.Seq import Seq
+import scipy
 from Bio.SeqRecord import SeqRecord
 from collections import defaultdict
 import gzip
@@ -140,6 +141,14 @@ def find_dist(record_one, kmer_dict, primer_seq, rev_or_naw):
                     temp = score_arr[x]
                     score_arr[x] = temp + 1
                     temp_arr.append(x)
+    peaks, _ =scipy.signal.find_peaks(score_arr)
+    print(peaks)
+    prominences = max(scipy.signal.peak_prominences(score_arr, peaks)[0])
+    print(prominences)
+    results_full = scipy.signal.peak_widths(score_arr, peaks, rel_height=1)
+    print(results_full[0])
+    print(*results_full[1:])
+
     max_index = score_arr.index(max(score_arr))
     temp_index = max_index
     temp_value = 1
@@ -168,6 +177,49 @@ def find_dist(record_one, kmer_dict, primer_seq, rev_or_naw):
     else:
         return low_bound, up_bound, (up_bound - low_bound + 1), temp_arr
 
+def find_dist_test(record_one, kmer_dict, primer_seq, rev_or_naw):
+    seq_id = record_one[0].id
+    seq = record_one[0].seq
+    length = len(seq)
+    score_arr = [0] * length
+    temp_arr=[]
+
+    # iterate through kmers for primer and if found add them to the score_arr
+    for keyer in kmer_dict.keys():
+        kmer_list = kmer_dict[keyer]
+        for kmer in kmer_list:
+            start, end = find_subseq(seq, kmer)
+            if start != -1:
+                for x in range(start, end + 1):
+                    temp = score_arr[x]
+                    score_arr[x] = temp + 1
+                    temp_arr.append(x)
+    peaks, _ = scipy.signal.find_peaks(score_arr)
+    print(peaks)
+    if len(peaks) != 0:
+        top_prom_arr = scipy.signal.peak_prominences(score_arr, peaks)
+        top_prom = max(top_prom_arr[0])
+        max_indices = [index for index, value in enumerate(top_prom_arr[0]) if value == top_prom]
+        #print(max_indices)
+        prom_test_val = top_prom/len(kmer_dict.keys())
+        print(prom_test_val)
+        if(prom_test_val > 1):
+            results_full = scipy.signal.peak_widths(score_arr, peaks, rel_height=1)
+            for top_index in max_indices:
+                print(top_index)
+
+                print(*results_full[1:])
+                if(len(peaks)==1):
+                    low_bound = results_full[1:][top_index+1]
+                    up_bound = results_full[1:][top_index+2]
+                else:
+                    low_bound = results_full[1:][1][top_index]
+                    up_bound = results_full[1:][2][top_index]
+                if(up_bound - (low_bound+1) > (len(primer_seq)/2)):
+                    print(primer_seq)
+                    print(seq[int(low_bound + 1):int(up_bound)])
+                    return int(low_bound+1), int(up_bound), (up_bound - (low_bound + 1)), temp_arr
+    return -99, -99, None, temp_arr
 
 
 
@@ -187,7 +239,7 @@ rev_rev_comp_kmer_dict = seq_combos(Seq(primer_830_r).reverse_complement())
 
 
 for filename in os.listdir(fasta_dir):
-    if (".fasta" in filename):
+    if ("silva_top_20.fasta" in filename):
         f = os.path.join(fasta_dir, filename)
         file_out_arr = filename.split('.fasta')
         file_out = file_out_arr[0] + '_V4_region_only.fasta'
@@ -195,21 +247,28 @@ for filename in os.listdir(fasta_dir):
         with open(f_out, 'w') as read_output:
             for (record_one) in zip(SeqIO.parse(f, "fasta")):
                 print(record_one[0].id)
-                prim_one_low_bound, prim_one_up_bound, prim_one_len, temp_guy = find_dist(record_one, fwd_kmer_dict, primer_530_f, False)
+                prim_one_low_bound, prim_one_up_bound, prim_one_len, temp_guy = find_dist_test(record_one, fwd_kmer_dict, primer_530_f, False)
                 if(prim_one_low_bound == -99):
                     temp_seq = Seq(primer_530_f).reverse_complement()
-                    prim_one_low_bound, prim_one_up_bound, prim_one_len, temp_guy = find_dist(record_one, fwd_rev_comp_kmer_dict, temp_seq, True)
-                prim_two_low_bound, prim_two_up_bound, prim_two_len, two_temp_guy = find_dist(record_one, rev_kmer_dict, primer_830_r, False)
+                    prim_one_low_bound, prim_one_up_bound, prim_one_len, temp_guy = find_dist_test(record_one, fwd_rev_comp_kmer_dict, temp_seq, True)
+                print("----------------------")
+                prim_two_low_bound, prim_two_up_bound, prim_two_len, two_temp_guy = find_dist_test(record_one, rev_kmer_dict, primer_830_r, False)
                 if(prim_two_low_bound == -99):
                     temp_seq = Seq(primer_830_r).reverse_complement()
-                    prim_two_low_bound, prim_two_up_bound, prim_two_len, two_temp_guy = find_dist(record_one, rev_rev_comp_kmer_dict, temp_seq, True)
+                    prim_two_low_bound, prim_two_up_bound, prim_two_len, two_temp_guy = find_dist_test(record_one, rev_rev_comp_kmer_dict, temp_seq, True)
                 #histogram_graph(two_temp_guy, record_one[0].seq, record_one[0].id)
-                seq_low_bound = prim_one_up_bound
-                seq_up_bound = prim_two_low_bound
+                print(prim_one_low_bound)
+                print(prim_one_up_bound)
+                print(prim_two_low_bound)
+                print(prim_two_up_bound)
+                seq_low_bound = prim_one_low_bound
+                seq_up_bound = prim_two_up_bound
                 if(prim_one_up_bound > prim_two_low_bound):
-                    seq_low_bound = prim_two_up_bound
-                    seq_up_bound = prim_one_low_bound
+                    seq_low_bound = prim_two_low_bound
+                    seq_up_bound = prim_one_up_bound
                 temp_seq = record_one[0].seq
+                #print(seq_up_bound)
+                #print(seq_low_bound)
                 record_one[0].seq = temp_seq[seq_low_bound:seq_up_bound]
-                SeqIO.write(record_one, read_output, 'fasta')
+                #SeqIO.write(record_one, read_output, 'fasta')
 
